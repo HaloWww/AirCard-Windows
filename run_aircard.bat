@@ -21,7 +21,6 @@ if not exist ".venv\Scripts\python.exe" (
         )
     )
     echo Installing required packages...
-    ".venv\Scripts\python.exe" -m pip install --upgrade pip
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt
     echo Setup complete!
     echo ========================================================
