@@ -32,6 +32,7 @@ This repository is an independent Windows port that brings the card skinning eng
    ```
 2. Double-click **`AirCard.vbs`** (silent launch) or **`run_aircard.bat`**.  
    *On first launch, it will automatically configure the environment and launch the modern graphical interface.*
+3. If Windows displays an *"Unknown Publisher"* or SmartScreen dialog, click **"More info" → "Run anyway"** (or uncheck *"Always ask"*). This is standard for unsigned open-source Windows scripts.
 
 > **Prefer Terminal CLI?** You can launch the interactive console interface at any time with:  
 > `run_aircard.bat --cli` or `python main.py`
