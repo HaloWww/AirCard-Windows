@@ -16,7 +16,18 @@ from .scanner import load_saved_cards, save_cards, start_card_scan_session
 from .image_util import prepare_card_skin
 from .core_flasher import flash_card_skin
 
-console = Console()
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+console = Console(safe_box=True, legacy_windows=False)
 
 
 def show_banner():
