@@ -27,25 +27,28 @@ This repository is an independent Windows port that brings the card skinning eng
 
 1. Clone or download this repository:
    ```cmd
-   git clone <repository-url>
+   git clone https://github.com/alrrstd/AirCard-Windows.git
    cd AirCard-Windows
    ```
-2. Double-click **`run_aircard.bat`** (or run `python main.py`).  
-   *On first launch, it will automatically create a virtual environment and install all dependencies.*
+2. Double-click **`AirCard.vbs`** (silent launch) or **`run_aircard.bat`**.  
+   *On first launch, it will automatically configure the environment and launch the modern graphical interface.*
+
+> **Prefer Terminal CLI?** You can launch the interactive console interface at any time with:  
+> `run_aircard.bat --cli` or `python main.py`
 
 ---
 
 ## How to Customize Apple Wallet Cards
 
-1. Connect your iPhone to your Windows PC via USB cable and ensure it is unlocked and **"Trust this Computer"** is accepted.
-2. In AirCard, select **`1`** (Scan Cards).
-3. On your iPhone:
-   - **Double-click Side (Power) or Home button** to open Apple Pay.
-   - Authenticate with **Face ID** / **Touch ID**.
-   - **Tap your card** on your screen to trigger instant detection!
-4. In AirCard, select **`3`** (Flash Custom Skin to Card).
-5. Choose your card and drag & drop your image (PNG / JPG / WebP).
-6. Force-close the **Wallet** app on your iPhone from the App Switcher (or lock & reopen) to view your new custom card design!
+1. Connect your iPhone to your Windows PC via USB cable, unlock it, and tap **"Trust this Computer"**.
+2. Launch AirCard via **`AirCard.vbs`** or **`run_aircard.bat`**.
+3. **Card Detection**:
+   - If your card was scanned before, select it from the dropdown.
+   - Or click **"Scan via iPhone"**, double-click your iPhone's Side/Power button to invoke Apple Pay, and tap your card — AirCard will detect it automatically!
+4. **Choose Skin**:
+   - Click directly on the preview card, click **"Browse File..."**, or press **`Ctrl+V`** to paste any image from clipboard (PNG/JPG/WebP, 1536 × 969 px recommended).
+5. Click **"Flash Skin to iPhone"**.
+6. Once completed, open the **Apple Wallet** app on your iPhone or double-click the side button to enjoy your custom card design!
 
 ---
 

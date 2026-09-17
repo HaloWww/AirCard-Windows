@@ -15,7 +15,9 @@ TARGET_ASSETS = [
 
 CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
 
-CARDS_STORE_PATH = Path.home() / ".aircard_cards_win.json"
+APP_ROOT_DIR = Path(__file__).resolve().parent.parent
+CARDS_STORE_PATH = APP_ROOT_DIR / "cards.json"
+LEGACY_STORE_PATH = Path.home() / ".aircard_cards_win.json"
 
 CARD_REGEXES = [
     re.compile(r"/(?:Cards|Passes/Cards)/([-A-Za-z0-9_+=]{20,44})(?:\.pkpass|\.cache|\.pkcache|/|\s|\"|\'|\)|,|$)"),

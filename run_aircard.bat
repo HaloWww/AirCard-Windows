@@ -26,9 +26,15 @@ if not exist ".venv\Scripts\python.exe" (
     echo ========================================================
 )
 
-".venv\Scripts\python.exe" main.py
-if %errorlevel% neq 0 (
-    echo.
-    echo Program exited with an error.
-    pause
+if "%~1"=="--cli" (
+    ".venv\Scripts\python.exe" main.py %*
+    if %errorlevel% neq 0 (
+        echo.
+        echo Program exited with an error.
+        pause
+    )
+    exit /b %errorlevel%
 )
+
+start "" ".venv\Scripts\pythonw.exe" app.py
+exit /b 0
