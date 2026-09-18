@@ -179,7 +179,7 @@ async def write_system_file_async(
                 await remove_tree(afc, source)
             except Exception:
                 pass
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.3)
             await restore_books(afc, snapshot)
 
 
@@ -189,7 +189,8 @@ async def flash_card_skin_async(
     skin_png_bytes: bytes,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
-    total_steps = len(TARGET_ASSETS) + (len(CACHE_FILES) * 2)
+    # 2 target skin assets (@3x, @2x) + 1 targeted cache invalidation = 3 fast steps
+    total_steps = len(TARGET_ASSETS) + 1
     step = 0
 
     lockdown = await get_lockdown_client(udid)
@@ -204,16 +205,15 @@ async def flash_card_skin_async(
         if not ok:
             return False
 
-    for ext in [".cache", ".pkcache"]:
-        cache_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}{ext}"
-        for leaf in CACHE_FILES:
-            step += 1
-            if progress_callback:
-                progress_callback(step, total_steps, f"Clearing cache ({leaf} in {ext})...")
-            try:
-                await write_system_file_async(actual_udid, cache_dir, leaf, b"corrupted")
-            except Exception:
-                pass
+    # Invalidate front face cache to force iOS PassKit to reload with new artwork
+    step += 1
+    if progress_callback:
+        progress_callback(step, total_steps, "Invalidating card cache (FrontFace)...")
+    cache_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}.cache"
+    try:
+        await write_system_file_async(actual_udid, cache_dir, "FrontFace", b"corrupted")
+    except Exception:
+        pass
 
     return True
 

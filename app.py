@@ -146,10 +146,13 @@ async def main(page: ft.Page):
 
     def on_card_selected(e):
         nonlocal selected_card_hash
-        selected_card_hash = card_dropdown.value
+        val = getattr(e, "data", None) or card_dropdown.value
+        selected_card_hash = val
+        card_dropdown.value = val
         update_flash_button_state()
         page.update()
 
+    card_dropdown.on_select = on_card_selected
     card_dropdown.on_change = on_card_selected
 
     scan_button = ft.FilledTonalButton(
@@ -787,6 +790,8 @@ async def main(page: ft.Page):
 
     def handle_rename_click(e):
         nonlocal selected_card_hash, saved_cards
+        if card_dropdown.value:
+            selected_card_hash = card_dropdown.value
         if not selected_card_hash:
             return
 
@@ -913,6 +918,8 @@ async def main(page: ft.Page):
     # Delete selected card handler
     def handle_delete_card(e):
         nonlocal saved_cards, selected_card_hash
+        if card_dropdown.value:
+            selected_card_hash = card_dropdown.value
         if not selected_card_hash:
             return
 
@@ -936,6 +943,9 @@ async def main(page: ft.Page):
 
     # Flashing logic
     async def perform_flash():
+        nonlocal selected_card_hash
+        if card_dropdown.value:
+            selected_card_hash = card_dropdown.value
         if not selected_device or not selected_card_hash or not current_skin_bytes:
             return
 
