@@ -2,9 +2,10 @@
 Live Apple Wallet card scanner for Windows via pymobiledevice3 syslog.
 """
 from typing import Callable, Optional, Set
+from pathlib import Path
 import asyncio
 import json
-from .config import CARDS_STORE_PATH, LEGACY_STORE_PATH, CARD_REGEXES
+from .config import CARDS_STORE_PATH, LEGACY_STORE_PATH, CARD_REGEXES, APP_ROOT_DIR
 from .device import get_lockdown_client
 
 DUMMY_HASHES = {
@@ -37,20 +38,116 @@ CONTEXT_KEYWORDS = (
 )
 
 
+from collections import deque
 import re
 
-DESC_REGEX = re.compile(
-    r"(?:description|localizedDescription|passName|title)\s*[:=]\s*['\"]([^'\"]+)['\"]",
-    re.IGNORECASE,
-)
+DESC_PATTERNS = [
+    re.compile(r'(?:organizationName|organization|issuerName|issuer|bankName)\s*[:=]\s*["\']?([^"\'\n,;]{2,40})["\']?', re.IGNORECASE),
+    re.compile(r'(?:passDescription|description|localizedDescription|passName|cardDisplayName|cardName|title)\s*[:=]\s*["\']?([^"\'\n,;]{2,40})["\']?', re.IGNORECASE),
+    re.compile(r'Pass\s+<[^>]+>\s+\(([^)]{2,40})\)', re.IGNORECASE),
+]
+
+SUFFIX_PATTERNS = [
+    re.compile(r'(?:primaryAccountSuffix|dpanSuffix|fpanSuffix|sanitizedPan|suffix|last4)\s*[:=]\s*["\']?[•\s*]*([0-9]{4})["\']?', re.IGNORECASE),
+    re.compile(r'(?:••••|•{4}|\*{4})\s*([0-9]{4})'),
+]
+
+KNOWN_ISSUERS = [
+    "Freedom Bank", "Freedom", "Bybit", "Kaspi", "Halyk", "BCC", "Jusan",
+    "Tinkoff", "T-Bank", "Sberbank", "Sber", "Alfa-Bank", "Alfa", "VTB", "Raiffeisen",
+    "Monobank", "PrivatBank", "Revolut", "Wise", "Chase", "Bank of America",
+    "Wells Fargo", "Citi", "Capital One", "Amex", "American Express", "Apple Card", "Apple Cash",
+    "Suica", "Pasmo", "ICOCA", "Octopus", "Metrolinx", "PRESTO", "TTC", "Oyster", "Navigo"
+]
+
+
+def extract_smart_card_name(lines: list[str]) -> Optional[str]:
+    """Analyze a buffer of recent syslog lines to reconstruct the clean card name and suffix."""
+    found_org: Optional[str] = None
+    found_suffix: Optional[str] = None
+
+    joined = "\n".join(lines)
+
+    # 1. Search for 4-digit card suffix
+    for p in SUFFIX_PATTERNS:
+        m = p.search(joined)
+        if m:
+            found_suffix = m.group(1).strip()
+            break
+
+    # 2. Check for known banks/issuers
+    for issuer in KNOWN_ISSUERS:
+        if re.search(r'\b' + re.escape(issuer) + r'\b', joined, re.IGNORECASE):
+            found_org = issuer
+            break
+
+    # 3. If no known issuer, extract from formal descriptors
+    if not found_org:
+        for p in DESC_PATTERNS:
+            m = p.search(joined)
+            if m:
+                cand = m.group(1).strip()
+                if len(cand) > 1 and "<private>" not in cand.lower() and "paymentpass" not in cand.lower():
+                    found_org = cand
+                    break
+
+    # 4. Construct human-friendly label
+    if found_org and found_suffix:
+        return f"{found_org} (•••• {found_suffix})"
+    elif found_org:
+        return found_org
+    elif found_suffix:
+        return f"Card (•••• {found_suffix})"
+
+    return None
 
 
 def extract_card_name_from_line(line: str) -> Optional[str]:
-    m = DESC_REGEX.search(line)
-    if m:
-        name = m.group(1).strip()
-        if len(name) > 1 and "<private>" not in name.lower():
-            return name
+    return extract_smart_card_name([line])
+
+
+def import_cards_from_sqlite(db_path: Path | str) -> list[dict[str, str]]:
+    """Extract all cards with real organization names and suffixes from passes23.sqlite."""
+    db_file = Path(db_path).resolve()
+    if not db_file.is_file():
+        return []
+    import sqlite3
+    try:
+        conn = sqlite3.connect(str(db_file))
+        c = conn.cursor()
+        rows = c.execute("""
+            SELECT unique_id, organization_name, primary_account_suffix 
+            FROM pass 
+            WHERE unique_id IS NOT NULL
+        """).fetchall()
+        conn.close()
+
+        cards = []
+        for uid, org, suffix in rows:
+            if not uid:
+                continue
+            if org and suffix:
+                name = f"{org} (•••• {suffix})"
+            elif org:
+                name = org
+            elif suffix:
+                name = f"Card (•••• {suffix})"
+            else:
+                name = "Apple Pay Card"
+            cards.append({"hash": uid, "name": name})
+        return cards
+    except Exception:
+        return []
+
+
+def find_local_passes_sqlite() -> Optional[Path]:
+    """Look for passes23.sqlite in the app root directory if provided by user."""
+    candidates = [
+        APP_ROOT_DIR / "passes23.sqlite",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
     return None
 
 
@@ -74,11 +171,11 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
         except Exception:
             pass
 
+    res = []
     if CARDS_STORE_PATH.is_file():
         try:
             data = json.loads(CARDS_STORE_PATH.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                res = []
                 for idx, item in enumerate(data, 1):
                     if isinstance(item, str):
                         res.append({"hash": item, "name": f"Card {idx}"})
@@ -87,10 +184,35 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
                             "hash": item["hash"],
                             "name": item.get("name") or f"Card {idx}"
                         })
-                return res
         except Exception:
             pass
-    return []
+
+    # Auto-enrich from local passes23.sqlite if available
+    db_path = find_local_passes_sqlite()
+    if db_path:
+        db_cards = import_cards_from_sqlite(db_path)
+        db_map = {c["hash"]: c["name"] for c in db_cards}
+
+        updated = False
+        # Enrich existing cards that have generic names
+        for c in res:
+            if c["hash"] in db_map:
+                if not c.get("name") or c.get("name").startswith("Card "):
+                    c["name"] = db_map[c["hash"]]
+                    updated = True
+
+        # Add any new cards from db not yet in list
+        existing_hashes = {c["hash"] for c in res}
+        for db_c in db_cards:
+            if db_c["hash"] not in existing_hashes:
+                res.append(db_c)
+                existing_hashes.add(db_c["hash"])
+                updated = True
+
+        if updated:
+            save_cards_metadata(res)
+
+    return res
 
 
 def save_cards_metadata(cards: list[dict[str, str]]) -> None:
@@ -142,13 +264,16 @@ def extract_card_hash_from_line(line: str) -> Optional[str]:
 
 async def start_card_scan_session(
     udid: Optional[str] = None,
-    on_card_found: Optional[Callable[[str, int], None]] = None,
+    on_card_found: Optional[Callable[[str, int, str], None]] = None,
     stop_event: Optional[asyncio.Event] = None
 ) -> list[str]:
     from pymobiledevice3.services.syslog import SyslogService
 
     lockdown = await get_lockdown_client(udid)
     known_cards: Set[str] = set(load_saved_cards())
+    rolling_buffer = deque(maxlen=30)
+    pending_hash: Optional[str] = None
+    collect_countdown = 0
 
     try:
         async with SyslogService(lockdown) as syslog:
@@ -157,22 +282,31 @@ async def start_card_scan_session(
                     break
 
                 line = entry if isinstance(entry, str) else entry.decode("utf-8", errors="replace")
-                card_hash = extract_card_hash_from_line(line)
+                rolling_buffer.append(line)
 
+                if pending_hash:
+                    collect_countdown -= 1
+                    if collect_countdown <= 0:
+                        card_name = extract_smart_card_name(list(rolling_buffer)) or f"Card {len(known_cards)}"
+                        meta = load_saved_cards_metadata()
+                        meta.append({"hash": pending_hash, "name": card_name})
+                        save_cards_metadata(meta)
+                        if on_card_found:
+                            try:
+                                on_card_found(pending_hash, len(known_cards), card_name)
+                            except TypeError:
+                                on_card_found(pending_hash, len(known_cards))
+                        if stop_event:
+                            stop_event.set()
+                        break
+                    continue
+
+                card_hash = extract_card_hash_from_line(line)
                 if card_hash and card_hash not in known_cards:
                     known_cards.add(card_hash)
-                    card_name = extract_card_name_from_line(line) or f"Card {len(known_cards)}"
-                    meta = load_saved_cards_metadata()
-                    meta.append({"hash": card_hash, "name": card_name})
-                    save_cards_metadata(meta)
-                    if on_card_found:
-                        try:
-                            on_card_found(card_hash, len(known_cards), card_name)
-                        except TypeError:
-                            on_card_found(card_hash, len(known_cards))
-                    if stop_event:
-                        stop_event.set()
-                    break
+                    pending_hash = card_hash
+                    # Gather 6 more syslog lines to ensure we capture full passd context
+                    collect_countdown = 6
     except asyncio.CancelledError:
         pass
     except Exception:

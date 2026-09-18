@@ -184,6 +184,9 @@ def menu_flash_skin():
         except Exception as e:
             console.print(f"[red]Error with image: {e}. Try another file.[/red]")
 
+    clean_choice = input("Clean Card Mode (hide bank logo for full-art look)? (y/N) [N]: ").strip().lower()
+    clean_logo = clean_choice in ("y", "yes", "1", "д", "да")
+
     for card_idx, target_card in enumerate(selected_cards, 1):
         console.print(f"[bold]Flashing card [{card_idx}/{len(selected_cards)}]:[/bold] [cyan]{target_card}[/cyan]")
 
@@ -193,12 +196,12 @@ def menu_flash_skin():
             BarColumn(),
             console=console,
         ) as progress:
-            task = progress.add_task("Connecting...", total=6)
+            task = progress.add_task("Connecting...", total=7 if clean_logo else 3)
 
             def update_progress(step: int, total: int, msg: str):
                 progress.update(task, completed=step, total=total, description=msg)
 
-            success = flash_card_skin(None, target_card, skin_bytes, progress_callback=update_progress)
+            success = flash_card_skin(None, target_card, skin_bytes, clean_logo=clean_logo, progress_callback=update_progress)
 
         if success:
             console.print(f"[bold green]🎉 SUCCESS: Card {target_card[:10]}... updated![/bold green]")

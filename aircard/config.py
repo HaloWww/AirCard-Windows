@@ -13,6 +13,13 @@ TARGET_ASSETS = [
     "cardBackgroundCombined@2x.png",
 ]
 
+LOGO_ASSETS = [
+    "logo@3x.png",
+    "logo@2x.png",
+    "cobrand@3x.png",
+    "cobrand@2x.png",
+]
+
 CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
 
 APP_ROOT_DIR = Path(__file__).resolve().parent.parent

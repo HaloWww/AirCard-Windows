@@ -15,7 +15,8 @@ from pymobiledevice3.services.afc import AfcService
 from pymobiledevice3.service_connection import build_plist
 from .device import get_lockdown_client
 from .airtraffic import sync_assets_via_airtraffic
-from .config import TARGET_ASSETS, CACHE_FILES
+from .config import TARGET_ASSETS, LOGO_ASSETS, CACHE_FILES
+from .image_util import get_transparent_pixel_png
 
 SOURCE_PREFIX = "airlift-src-"
 LINK_PREFIX = "airlift-link-"
@@ -183,14 +184,40 @@ async def write_system_file_async(
             await restore_books(afc, snapshot)
 
 
+async def invalidate_card_cache_async(
+    udid: Optional[str],
+    card_hash: str,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    current_step: int = 0,
+    total_steps: int = 0,
+) -> int:
+    """Corrupt FrontFace, PlaceHolder, and Preview in .cache
+    so both Apple Wallet and Apple Pay double-click presentation re-render with new artwork."""
+    lockdown = await get_lockdown_client(udid)
+    actual_udid = udid or lockdown.identifier
+
+    cache_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}.cache"
+    for leaf in CACHE_FILES:
+        current_step += 1
+        if progress_callback and total_steps > 0:
+            progress_callback(current_step, total_steps, f"Invalidating {leaf} cache (Apple Pay sync)...")
+        try:
+            await write_system_file_async(actual_udid, cache_dir, leaf, b"corrupted")
+        except Exception:
+            pass
+    return current_step
+
+
 async def flash_card_skin_async(
     udid: Optional[str],
     card_hash: str,
     skin_png_bytes: bytes,
+    clean_logo: bool = False,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
-    # 2 target skin assets (@3x, @2x) + 1 targeted cache invalidation = 3 fast steps
-    total_steps = len(TARGET_ASSETS) + 1
+    extra_assets = LOGO_ASSETS if clean_logo else []
+    cache_steps = len(CACHE_FILES)
+    total_steps = len(TARGET_ASSETS) + len(extra_assets) + cache_steps
     step = 0
 
     lockdown = await get_lockdown_client(udid)
@@ -205,15 +232,20 @@ async def flash_card_skin_async(
         if not ok:
             return False
 
-    # Invalidate front face cache to force iOS PassKit to reload with new artwork
-    step += 1
-    if progress_callback:
-        progress_callback(step, total_steps, "Invalidating card cache (FrontFace)...")
-    cache_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}.cache"
-    try:
-        await write_system_file_async(actual_udid, cache_dir, "FrontFace", b"corrupted")
-    except Exception:
-        pass
+    if clean_logo:
+        transparent_bytes = get_transparent_pixel_png()
+        for logo_asset in LOGO_ASSETS:
+            step += 1
+            if progress_callback:
+                progress_callback(step, total_steps, f"Hiding {logo_asset}...")
+            ok = await write_system_file_async(actual_udid, pkpass_dir, logo_asset, transparent_bytes)
+            if not ok:
+                return False
+
+    # Invalidate all caches (FrontFace, PlaceHolder, Preview) in .cache and .pkcache
+    step = await invalidate_card_cache_async(
+        actual_udid, card_hash, progress_callback, current_step=step, total_steps=total_steps
+    )
 
     return True
 
@@ -222,6 +254,8 @@ def flash_card_skin(
     udid: Optional[str],
     card_hash: str,
     skin_png_bytes: bytes,
+    clean_logo: bool = False,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
-    return asyncio.run(flash_card_skin_async(udid, card_hash, skin_png_bytes, progress_callback))
+    return asyncio.run(flash_card_skin_async(udid, card_hash, skin_png_bytes, clean_logo, progress_callback))
+
