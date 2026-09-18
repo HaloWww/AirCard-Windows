@@ -2,7 +2,7 @@
 
 > **Native Windows port of [AirCard](https://github.com/mak5er/AirCard) by [@mak5er](https://github.com/mak5er)**  
 > Customizes Apple Wallet & Apple Pay card skins on Windows without jailbreak.  
-> **Tested on iOS 17 & 18.**  
+> **Tested on iOS 17 & 26.5.**  
 > Powered by the `airlift` AirTraffic sync exploit.
 
 ---
