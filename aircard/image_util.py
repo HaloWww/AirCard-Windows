@@ -18,7 +18,7 @@ def prepare_card_skin(source: str | Path | Image.Image | bytes | io.BytesIO) -> 
     else:
         path = Path(source).expanduser().resolve()
         if not path.is_file():
-            raise FileNotFoundError(f"Card image file not found: {path}")
+            raise FileNotFoundError(f"找不到卡面图片：{path}")
         img = Image.open(path)
         should_close = True
 

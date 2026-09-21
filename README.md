@@ -13,7 +13,7 @@
 
 ## 主要功能
 
-- 简洁的三步式 Windows GUI：连接 iPhone、选择卡片、应用卡面
+- 全中文、简洁的三步式 Windows GUI：连接 iPhone、选择卡片、应用卡面
 - 支持 PNG、JPG 和 WebP，自动裁切为 1536 × 969
 - 同时生成 Wallet 所需的 `@3x`、`@2x` 和 PDF 卡面资源
 - 可选“全图模式”，隐藏发卡行和联名 Logo

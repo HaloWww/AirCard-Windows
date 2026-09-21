@@ -104,7 +104,7 @@ def extract_smart_card_name(lines: list[str]) -> Optional[str]:
     elif found_org:
         return found_org
     elif found_suffix:
-        return f"Card (•••• {found_suffix})"
+        return f"卡片（•••• {found_suffix}）"
 
     return None
 
@@ -138,9 +138,9 @@ def import_cards_from_sqlite(db_path: Path | str) -> list[dict[str, str]]:
             elif org:
                 name = org
             elif suffix:
-                name = f"Card (•••• {suffix})"
+                name = f"卡片（•••• {suffix}）"
             else:
-                name = "Apple Pay Card"
+                name = "Apple Pay 卡片"
             cards.append({"hash": uid, "name": name})
         return cards
     except Exception:
@@ -175,11 +175,11 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
                 res = []
                 for idx, item in enumerate(legacy_data, 1):
                     if isinstance(item, str):
-                        res.append({"hash": item, "name": f"Card {idx}"})
+                        res.append({"hash": item, "name": f"卡片 {idx}"})
                     elif isinstance(item, dict) and "hash" in item:
                         res.append({
                             "hash": item["hash"],
-                            "name": item.get("name") or f"Card {idx}"
+                            "name": item.get("name") or f"卡片 {idx}"
                         })
                 save_cards_metadata(res)
         except Exception:
@@ -192,11 +192,11 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
             if isinstance(data, list):
                 for idx, item in enumerate(data, 1):
                     if isinstance(item, str):
-                        res.append({"hash": item, "name": f"Card {idx}"})
+                        res.append({"hash": item, "name": f"卡片 {idx}"})
                     elif isinstance(item, dict) and "hash" in item:
                         res.append({
                             "hash": item["hash"],
-                            "name": item.get("name") or f"Card {idx}"
+                            "name": item.get("name") or f"卡片 {idx}"
                         })
         except Exception:
             pass
@@ -211,7 +211,7 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
         # Enrich existing cards that have generic names
         for c in res:
             if c["hash"] in db_map:
-                if not c.get("name") or c.get("name").startswith("Card "):
+                if not c.get("name") or c.get("name").startswith(("Card ", "卡片 ")):
                     c["name"] = db_map[c["hash"]]
                     updated = True
 
@@ -253,7 +253,7 @@ def save_cards(cards: list[str]) -> None:
     existing = {c["hash"]: c["name"] for c in load_saved_cards_metadata()}
     meta = []
     for idx, h in enumerate(cards, 1):
-        meta.append({"hash": h, "name": existing.get(h, f"Card {idx}")})
+        meta.append({"hash": h, "name": existing.get(h, f"卡片 {idx}")})
     save_cards_metadata(meta)
 
 
@@ -302,7 +302,7 @@ async def start_card_scan_session(
                 if pending_hash:
                     collect_countdown -= 1
                     if collect_countdown <= 0:
-                        card_name = extract_smart_card_name(list(rolling_buffer)) or f"Card {len(known_cards)}"
+                        card_name = extract_smart_card_name(list(rolling_buffer)) or f"卡片 {len(known_cards)}"
                         meta = load_saved_cards_metadata()
                         meta.append({"hash": pending_hash, "name": card_name})
                         save_cards_metadata(meta)

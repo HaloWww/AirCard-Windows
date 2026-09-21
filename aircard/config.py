@@ -28,7 +28,7 @@ CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
 CACHE_EXTENSIONS = [".cache", ".pkcache"]
 
 APP_NAME = "AirCard"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.0-beta.2"
 
 APP_ROOT_DIR = Path(__file__).resolve().parent.parent
 LOCAL_APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))

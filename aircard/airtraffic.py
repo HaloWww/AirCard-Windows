@@ -20,7 +20,7 @@ class MissingRemoteAssetError(AirTrafficError):
     """The device did not advertise one or more requested source assets."""
 
     def __init__(self, identifiers: list[str]):
-        super().__init__(f"Remote assets were not present: {', '.join(identifiers)}")
+        super().__init__(f"设备上未找到这些资源：{', '.join(identifiers)}")
         self.identifiers = identifiers
 
 
@@ -133,7 +133,7 @@ def sync_assets_via_airtraffic(
     dll_dir = find_apple_dll_dir()
     if not dll_dir:
             raise AirTrafficError(
-                "Apple Mobile Device Support was not found. Install the 64-bit desktop iTunes package."
+                "未找到 Apple 移动设备支持。请安装 64 位桌面版 iTunes。"
             )
 
     bridge = CFBridge(str(dll_dir))
@@ -142,7 +142,7 @@ def sync_assets_via_airtraffic(
     bridge.cf.CFRelease(cf_udid)
 
     if not conn:
-        raise AirTrafficError(f"AirTraffic could not connect to device {udid}")
+        raise AirTrafficError(f"AirTraffic 无法连接设备 {udid}")
 
     try:
         sync_allowed = False
@@ -159,7 +159,7 @@ def sync_assets_via_airtraffic(
                 break
 
         if not sync_allowed:
-            raise AirTrafficError("SyncAllowed was not received from the device")
+            raise AirTrafficError("设备未允许同步（未收到 SyncAllowed）")
 
         host_info_py = {
             "Type": "iTunes",
@@ -196,7 +196,7 @@ def sync_assets_via_airtraffic(
                 break
 
         if not ready_for_sync:
-            raise AirTrafficError("ReadyForSync was not received from the device")
+            raise AirTrafficError("设备未准备好同步（未收到 ReadyForSync）")
 
         cf_sync_types = bridge.cf_plist({"Book": 1})
         cf_empty_anchors = bridge.cf_plist({})
@@ -227,7 +227,7 @@ def sync_assets_via_airtraffic(
         bridge.cf.CFRelease(key_manifest)
 
         if not manifest_obj or "Book" not in manifest_obj:
-            raise AirTrafficError("The AirTraffic asset manifest was missing or empty")
+            raise AirTrafficError("AirTraffic 资源清单缺失或为空")
 
         download_ids = {
             b["AssetID"] for b in manifest_obj.get("Book", [])

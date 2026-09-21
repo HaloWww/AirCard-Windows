@@ -75,15 +75,15 @@ class RestoreError(RuntimeError):
 def _validate_target(target: str) -> str:
     normalized = posixpath.normpath(target)
     if not normalized.startswith("/") or normalized == "/" or "\x00" in normalized:
-        raise ValueError("Target must be a non-root absolute iOS path")
+        raise ValueError("目标必须是非根目录的 iOS 绝对路径")
     if any(part in ("", ".", "..") for part in normalized[1:].split("/")):
-        raise ValueError("Target contains an unsafe path component")
+        raise ValueError("目标路径包含不安全的路径片段")
     return normalized
 
 
 def _validate_leaf(leaf: str) -> str:
     if not leaf or Path(leaf).name != leaf or "/" in leaf or "\\" in leaf or "\x00" in leaf:
-        raise ValueError(f"Unsafe asset name: {leaf}")
+        raise ValueError(f"资源名称不安全：{leaf}")
     return leaf
 
 
@@ -187,7 +187,7 @@ async def restore_books(afc: Any, snapshot: dict[str, Any]) -> None:
             failures.append(path)
     if failures:
         raise FlashError(
-            "Apple Books sync state could not be restored: "
+            "无法恢复 Apple Books 同步状态："
             + ", ".join(sorted(set(failures)))
         )
 
@@ -238,7 +238,7 @@ async def _stage_archive(
     ]
     missing = [path for path in expected if not await afc.exists(path)]
     if missing:
-        raise FlashError("StreamingZip did not create: " + ", ".join(missing))
+        raise FlashError("StreamingZip 未能创建：" + ", ".join(missing))
 
 
 async def _write_files_in_session(
@@ -266,7 +266,7 @@ async def _write_files_in_session(
     ]
 
     if await afc.exists(source) or await afc.exists(link_destination):
-        raise FlashError("A generated AirLift staging path already exists")
+        raise FlashError("AirLift 临时路径已存在，请重试")
     await _stage_archive(lockdown, afc, source, target, files)
     try:
         await _ensure_parent(afc, "Books/Sync/Books.plist")
@@ -317,7 +317,7 @@ async def write_system_files_async(
             last_error = exc
             if attempt < retries:
                 await asyncio.sleep(0.4 * attempt)
-    raise FlashError(f"Failed to write Wallet artwork: {last_error}") from last_error
+    raise FlashError(f"写入 Wallet 卡面失败：{last_error}") from last_error
 
 
 async def write_system_file_async(
@@ -406,8 +406,8 @@ async def read_system_file_async(
             if not restored:
                 recovery_path = _save_emergency_copy(target_dir, leaf_name, payload)
                 raise RestoreError(
-                    "The original file was read but could not be put back. "
-                    f"A recovery copy was saved at {recovery_path}."
+                    "已读取原始文件，但无法将其写回设备。"
+                    f"紧急恢复副本已保存到 {recovery_path}。"
                 )
             await afc.rm(recovered)
             return payload
@@ -464,13 +464,13 @@ async def backup_original_card_async(
     total = len(BACKUP_ASSETS)
     for index, name in enumerate(BACKUP_ASSETS, 1):
         if progress_callback:
-            progress_callback(index - 1, total, f"Backing up original {name}…")
+            progress_callback(index - 1, total, f"正在备份原始资源：{name}…")
         assets[name] = await read_system_file_async(udid, target, name)
 
     missing_required = [name for name in REQUIRED_BACKUP_ASSETS if assets.get(name) is None]
     if missing_required:
         raise BackupError(
-            "Original artwork could not be backed up: " + ", ".join(missing_required)
+            "无法备份原始卡面资源：" + ", ".join(missing_required)
         )
     record = save_backup(
         udid,
@@ -480,7 +480,7 @@ async def backup_original_card_async(
         ios_version=ios_version,
     )
     if progress_callback:
-        progress_callback(total, total, "Original card artwork backed up")
+        progress_callback(total, total, "原始卡面已备份")
     return record
 
 
@@ -499,7 +499,7 @@ async def invalidate_card_cache_async(
             progress_callback(
                 current_step,
                 total_steps,
-                f"Refreshing Wallet cache ({extension})…",
+                f"正在刷新 Wallet 缓存（{extension}）…",
             )
         await write_system_files_async(
             actual_udid,
@@ -540,7 +540,7 @@ async def flash_card_skin_async(
 
     total = len(files) + len(CACHE_FILES) * len(CACHE_EXTENSIONS)
     if progress_callback:
-        progress_callback(0, total, "Writing card artwork…")
+        progress_callback(0, total, "正在写入新卡面…")
     target = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
     await write_system_files_async(actual_udid, target, files)
     await invalidate_card_cache_async(
@@ -551,7 +551,7 @@ async def flash_card_skin_async(
         total_steps=total,
     )
     if progress_callback:
-        progress_callback(total, total, "Card artwork applied")
+        progress_callback(total, total, "新卡面已应用")
     return True
 
 
@@ -565,7 +565,7 @@ async def restore_original_card_async(
 ) -> bool:
     record = backup or latest_backup(udid, card_hash)
     if not record:
-        raise RestoreError("No original-artwork backup exists for this card and device")
+        raise RestoreError("此设备和卡片没有可用的原始卡面备份")
     assets = load_backup_assets(record)
     target = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
     existing = [(name, payload) for name, payload in assets.items() if payload is not None]
@@ -573,14 +573,14 @@ async def restore_original_card_async(
     total = len(existing) + len(absent) + len(CACHE_FILES) * len(CACHE_EXTENSIONS)
 
     if progress_callback:
-        progress_callback(0, total, "Restoring original artwork…")
+        progress_callback(0, total, "正在恢复原始卡面…")
     await write_system_files_async(udid, target, existing)
     step = len(existing)
     for name in absent:
         await remove_system_file_async(udid, target, name)
         step += 1
         if progress_callback:
-            progress_callback(step, total, f"Removing added {name}…")
+            progress_callback(step, total, f"正在移除后来添加的资源：{name}…")
 
     await invalidate_card_cache_async(
         udid,
@@ -594,9 +594,9 @@ async def restore_original_card_async(
         for name, expected in existing:
             observed = await read_system_file_async(udid, target, name)
             if observed != expected:
-                raise RestoreError(f"Restore verification failed for {name}")
+                raise RestoreError(f"恢复校验失败：{name}")
     if progress_callback:
-        progress_callback(total, total, "Original artwork restored and verified")
+        progress_callback(total, total, "原始卡面已恢复并通过校验")
     return True
 
 

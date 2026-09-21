@@ -54,10 +54,10 @@ def _read_record(path: Path) -> BackupRecord:
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise BackupError(f"Invalid backup manifest: {manifest_path}") from exc
+        raise BackupError(f"备份清单无效：{manifest_path}") from exc
 
     if data.get("version") != BACKUP_VERSION or not isinstance(data.get("assets"), dict):
-        raise BackupError(f"Unsupported backup format: {manifest_path}")
+        raise BackupError(f"不支持的备份格式：{manifest_path}")
     return BackupRecord(
         path=path,
         udid=str(data.get("udid", "")),
@@ -79,9 +79,9 @@ def save_backup(
 ) -> BackupRecord:
     """Atomically save a backup. Existing backups are never overwritten."""
     if not udid or not card_hash:
-        raise BackupError("Device and card identifiers are required")
+        raise BackupError("必须提供设备和卡片标识")
     if not assets:
-        raise BackupError("No artwork was supplied for backup")
+        raise BackupError("没有可供备份的卡面资源")
 
     ensure_app_data_dirs()
     parent = _card_backup_dir(udid, card_hash)
@@ -94,7 +94,7 @@ def save_backup(
         manifest_assets: dict[str, dict] = {}
         for index, (name, payload) in enumerate(sorted(assets.items())):
             if Path(name).name != name:
-                raise BackupError(f"Unsafe asset name: {name}")
+                raise BackupError(f"资源名称不安全：{name}")
             if payload is None:
                 manifest_assets[name] = {"exists": False}
                 continue
@@ -162,15 +162,15 @@ def load_backup_assets(record: BackupRecord) -> dict[str, bytes | None]:
             continue
         file_name = metadata.get("file")
         if not isinstance(file_name, str) or Path(file_name).name != file_name:
-            raise BackupError(f"Unsafe backup entry for {name}")
+            raise BackupError(f"备份条目不安全：{name}")
         try:
             payload = (record.path / file_name).read_bytes()
         except OSError as exc:
-            raise BackupError(f"Missing backup data for {name}") from exc
+            raise BackupError(f"备份数据缺失：{name}") from exc
         expected = metadata.get("sha256")
         if hashlib.sha256(payload).hexdigest() != expected:
-            raise BackupError(f"Backup checksum mismatch for {name}")
+            raise BackupError(f"备份校验和不匹配：{name}")
         if len(payload) != metadata.get("size"):
-            raise BackupError(f"Backup size mismatch for {name}")
+            raise BackupError(f"备份大小不匹配：{name}")
         result[name] = payload
     return result

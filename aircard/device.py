@@ -16,7 +16,7 @@ def _pymobiledevice_api():
         from pymobiledevice3.usbmux import list_devices
     except ImportError as exc:
         raise DeviceDependencyError(
-            "pymobiledevice3 is not installed. Re-run the AirCard installer."
+            "缺少 iPhone 通信组件。请重新运行 AirCard 安装程序。"
         ) from exc
     return list_devices, create_using_usbmux
 
@@ -47,8 +47,8 @@ async def get_connected_devices() -> list[ConnectedDevice]:
                     udid=d.serial,
                     name=values.get("DeviceName", "iPhone"),
                     product_type=values.get("ProductType", "iPhone"),
-                    ios_version=values.get("ProductVersion", "Unknown"),
-                    build_version=values.get("BuildVersion", "Unknown"),
+                    ios_version=values.get("ProductVersion", "未知"),
+                    build_version=values.get("BuildVersion", "未知"),
                     connection_type=d.connection_type or "USB",
                 ))
             finally:
@@ -60,10 +60,10 @@ async def get_connected_devices() -> list[ConnectedDevice]:
         except Exception:
             result.append(ConnectedDevice(
                 udid=d.serial,
-                name="iPhone (Locked or Untrusted)",
+                name="iPhone（已锁定或未信任）",
                 product_type="iPhone",
-                ios_version="Unknown",
-                build_version="Unknown",
+                ios_version="未知",
+                build_version="未知",
                 connection_type=d.connection_type or "USB",
             ))
     return result

@@ -19,8 +19,8 @@ $flet = Join-Path $buildEnv "Scripts\flet.exe"
 
 & $flet pack app.py `
     --name AirCard `
-    --product-name "AirCard for Windows" `
-    --file-description "Recovery-first Apple Wallet artwork manager" `
+    --product-name "AirCard 卡面助手" `
+    --file-description "Windows Apple Wallet 卡面管理工具" `
     --product-version "2.0.0" `
     --file-version "2.0.0.0" `
     --company-name "AirCard contributors" `
