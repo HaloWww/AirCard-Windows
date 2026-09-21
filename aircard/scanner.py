@@ -5,7 +5,14 @@ from typing import Callable, Optional, Set
 from pathlib import Path
 import asyncio
 import json
-from .config import CARDS_STORE_PATH, LEGACY_STORE_PATH, CARD_REGEXES, APP_ROOT_DIR
+from .config import (
+    APP_ROOT_DIR,
+    CARD_REGEXES,
+    CARDS_STORE_PATH,
+    LEGACY_STORE_PATH,
+    PORTABLE_CARDS_STORE_PATH,
+    ensure_app_data_dirs,
+)
 from .device import get_lockdown_client
 
 DUMMY_HASHES = {
@@ -152,10 +159,18 @@ def find_local_passes_sqlite() -> Optional[Path]:
 
 
 def load_saved_cards_metadata() -> list[dict[str, str]]:
-    # Auto-migrate legacy cards file from user profile into local installation folder
-    if not CARDS_STORE_PATH.is_file() and LEGACY_STORE_PATH.is_file():
+    # Migrate older portable/profile stores into writable per-user app data.
+    migration_source = next(
+        (
+            path
+            for path in (PORTABLE_CARDS_STORE_PATH, LEGACY_STORE_PATH)
+            if path.is_file()
+        ),
+        None,
+    )
+    if not CARDS_STORE_PATH.is_file() and migration_source:
         try:
-            legacy_data = json.loads(LEGACY_STORE_PATH.read_text(encoding="utf-8"))
+            legacy_data = json.loads(migration_source.read_text(encoding="utf-8"))
             if isinstance(legacy_data, list):
                 res = []
                 for idx, item in enumerate(legacy_data, 1):
@@ -167,7 +182,6 @@ def load_saved_cards_metadata() -> list[dict[str, str]]:
                             "name": item.get("name") or f"Card {idx}"
                         })
                 save_cards_metadata(res)
-            LEGACY_STORE_PATH.unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -224,6 +238,7 @@ def save_cards_metadata(cards: list[dict[str, str]]) -> None:
             seen.add(h)
             unique.append({"hash": h, "name": c.get("name", "")})
     try:
+        ensure_app_data_dirs()
         CARDS_STORE_PATH.write_text(json.dumps(unique, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass

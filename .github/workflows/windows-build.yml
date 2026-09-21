@@ -1,0 +1,35 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-build.txt
+      - name: Package AirCard
+        shell: pwsh
+        run: >-
+          flet pack app.py
+          --name AirCard
+          --product-name "AirCard for Windows"
+          --file-description "Recovery-first Apple Wallet artwork manager"
+          --product-version "2.0.0"
+          --file-version "2.0.0.0"
+          --company-name "AirCard contributors"
+          --hidden-import pymobiledevice3.lockdown pymobiledevice3.usbmux pymobiledevice3.services.afc pymobiledevice3.services.syslog pymobiledevice3.service_connection
+          --distpath dist
+          --yes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AirCard-Windows
+          path: dist/AirCard.exe
+          if-no-files-found: error

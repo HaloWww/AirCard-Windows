@@ -1,4 +1,5 @@
-pymobiledevice3>=2.30.0
-Pillow>=10.0.0
-rich>=13.0.0
-flet>=1.0.0
+pymobiledevice3==11.15.5
+Pillow>=10.0,<13
+rich>=13.0,<16
+flet==1.0.0
+flet-desktop==1.0.0

@@ -23,7 +23,7 @@ def prepare_card_skin(source: str | Path | Image.Image | bytes | io.BytesIO) -> 
         should_close = True
 
     try:
-        img = img.convert("RGBA")
+        img = ImageOps.exif_transpose(img).convert("RGBA")
         fitted = ImageOps.fit(img, TARGET_SIZE, method=Image.Resampling.LANCZOS)
         out_buf = io.BytesIO()
         fitted.save(out_buf, format="PNG", optimize=True)
@@ -38,6 +38,33 @@ def save_prepared_skin(input_path: str | Path, output_path: str | Path) -> Path:
     out = Path(output_path)
     out.write_bytes(data)
     return out
+
+
+def build_card_assets(skin_png_bytes: bytes) -> dict[str, bytes]:
+    """Build the complete Wallet artwork set without macOS-only ``sips``."""
+    with Image.open(io.BytesIO(skin_png_bytes)) as source:
+        rgba = ImageOps.fit(
+            ImageOps.exif_transpose(source).convert("RGBA"),
+            TARGET_SIZE,
+            method=Image.Resampling.LANCZOS,
+        )
+
+        png = io.BytesIO()
+        rgba.save(png, format="PNG", optimize=True)
+        png_bytes = png.getvalue()
+
+        # Wallet expects a PDF alongside the bitmap artwork for some card types.
+        # Pillow emits a standards-compliant single-page image PDF on Windows.
+        pdf = io.BytesIO()
+        background = Image.new("RGB", rgba.size, "white")
+        background.paste(rgba, mask=rgba.getchannel("A"))
+        background.save(pdf, format="PDF", resolution=144.0)
+
+    return {
+        "cardBackgroundCombined@3x.png": png_bytes,
+        "cardBackgroundCombined@2x.png": png_bytes,
+        "cardBackgroundCombined.pdf": pdf.getvalue(),
+    }
 
 
 def get_transparent_pixel_png() -> bytes:

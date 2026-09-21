@@ -1,11 +1,24 @@
 """
 Device detection and lockdown utilities using pymobiledevice3.
 """
-from dataclasses import dataclass
 import asyncio
+from dataclasses import dataclass
 from typing import Optional
-from pymobiledevice3.usbmux import list_devices
-from pymobiledevice3.lockdown import create_using_usbmux, UsbmuxLockdownClient
+
+
+class DeviceDependencyError(RuntimeError):
+    pass
+
+
+def _pymobiledevice_api():
+    try:
+        from pymobiledevice3.lockdown import create_using_usbmux
+        from pymobiledevice3.usbmux import list_devices
+    except ImportError as exc:
+        raise DeviceDependencyError(
+            "pymobiledevice3 is not installed. Re-run the AirCard installer."
+        ) from exc
+    return list_devices, create_using_usbmux
 
 
 @dataclass
@@ -22,20 +35,28 @@ class ConnectedDevice:
 
 
 async def get_connected_devices() -> list[ConnectedDevice]:
+    list_devices, create_using_usbmux = _pymobiledevice_api()
     raw_devices = await list_devices()
     result = []
     for d in raw_devices:
         try:
             lockdown = await create_using_usbmux(serial=d.serial, connection_type=d.connection_type)
-            values = await lockdown.get_value()
-            result.append(ConnectedDevice(
-                udid=d.serial,
-                name=values.get("DeviceName", "iPhone"),
-                product_type=values.get("ProductType", "iPhone"),
-                ios_version=values.get("ProductVersion", "Unknown"),
-                build_version=values.get("BuildVersion", "Unknown"),
-                connection_type=d.connection_type or "USB",
-            ))
+            try:
+                values = await lockdown.get_value()
+                result.append(ConnectedDevice(
+                    udid=d.serial,
+                    name=values.get("DeviceName", "iPhone"),
+                    product_type=values.get("ProductType", "iPhone"),
+                    ios_version=values.get("ProductVersion", "Unknown"),
+                    build_version=values.get("BuildVersion", "Unknown"),
+                    connection_type=d.connection_type or "USB",
+                ))
+            finally:
+                close = getattr(lockdown, "close", None)
+                if close:
+                    result_value = close()
+                    if asyncio.iscoroutine(result_value):
+                        await result_value
         except Exception:
             result.append(ConnectedDevice(
                 udid=d.serial,
@@ -53,9 +74,10 @@ def get_first_device() -> Optional[ConnectedDevice]:
     return devices[0] if devices else None
 
 
-async def get_lockdown_client(udid: Optional[str] = None) -> UsbmuxLockdownClient:
+async def get_lockdown_client(udid: Optional[str] = None):
+    _, create_using_usbmux = _pymobiledevice_api()
     return await create_using_usbmux(serial=udid)
 
 
-def get_lockdown_client_sync(udid: Optional[str] = None) -> UsbmuxLockdownClient:
-    return asyncio.run(create_using_usbmux(serial=udid))
+def get_lockdown_client_sync(udid: Optional[str] = None):
+    return asyncio.run(get_lockdown_client(udid))

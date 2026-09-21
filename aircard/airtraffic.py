@@ -1,7 +1,7 @@
 """
 AirTrafficHost bridge for Windows via ctypes and iTunes support DLLs.
 """
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any, Callable, Iterable
 import os
 import time
 import uuid
@@ -10,6 +10,18 @@ import ctypes
 from .config import find_apple_dll_dir
 
 kCFStringEncodingUTF8 = 0x08000100
+
+
+class AirTrafficError(RuntimeError):
+    """Base error for the proprietary Apple AirTraffic bridge."""
+
+
+class MissingRemoteAssetError(AirTrafficError):
+    """The device did not advertise one or more requested source assets."""
+
+    def __init__(self, identifiers: list[str]):
+        super().__init__(f"Remote assets were not present: {', '.join(identifiers)}")
+        self.identifiers = identifiers
 
 
 class CFBridge:
@@ -111,12 +123,18 @@ class CFBridge:
 
 def sync_assets_via_airtraffic(
     udid: str,
-    assets: List[Tuple[str, str]],
-    timeout_sec: int = 45
+    assets: Iterable[tuple[str, str]],
+    timeout_sec: int = 45,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> bool:
+    assets = list(assets)
+    if not assets:
+        return True
     dll_dir = find_apple_dll_dir()
     if not dll_dir:
-        raise RuntimeError("Apple Mobile Device Support DLL directory not found. Please install iTunes.")
+            raise AirTrafficError(
+                "Apple Mobile Device Support was not found. Install the 64-bit desktop iTunes package."
+            )
 
     bridge = CFBridge(str(dll_dir))
     cf_udid = bridge.cf_string(udid)
@@ -124,7 +142,7 @@ def sync_assets_via_airtraffic(
     bridge.cf.CFRelease(cf_udid)
 
     if not conn:
-        raise RuntimeError(f"ATHostConnectionCreate failed for device {udid}")
+        raise AirTrafficError(f"AirTraffic could not connect to device {udid}")
 
     try:
         sync_allowed = False
@@ -141,7 +159,7 @@ def sync_assets_via_airtraffic(
                 break
 
         if not sync_allowed:
-            raise RuntimeError("SyncAllowed not received from device")
+            raise AirTrafficError("SyncAllowed was not received from the device")
 
         host_info_py = {
             "Type": "iTunes",
@@ -178,7 +196,7 @@ def sync_assets_via_airtraffic(
                 break
 
         if not ready_for_sync:
-            raise RuntimeError("ReadyForSync not received from device")
+            raise AirTrafficError("ReadyForSync was not received from the device")
 
         cf_sync_types = bridge.cf_plist({"Book": 1})
         cf_empty_anchors = bridge.cf_plist({})
@@ -209,16 +227,16 @@ def sync_assets_via_airtraffic(
         bridge.cf.CFRelease(key_manifest)
 
         if not manifest_obj or "Book" not in manifest_obj:
-            raise RuntimeError("AssetManifest was missing or empty")
+            raise AirTrafficError("The AirTraffic asset manifest was missing or empty")
 
         download_ids = {
             b["AssetID"] for b in manifest_obj.get("Book", [])
             if isinstance(b, dict) and b.get("IsDownload")
         }
 
-        for ident, _ in assets:
-            if ident not in download_ids:
-                raise RuntimeError(f"Asset '{ident}' missing from device download manifest")
+        missing = [ident for ident, _ in assets if ident not in download_ids]
+        if missing:
+            raise MissingRemoteAssetError(missing)
 
         cf_dataclass = bridge.cf_string("Book")
         for idx, (ident, dest) in enumerate(assets):
@@ -227,8 +245,10 @@ def sync_assets_via_airtraffic(
             bridge.ath.ATHostConnectionSendAssetCompleted(conn, cf_ident, cf_dataclass, cf_dest)
             bridge.cf.CFRelease(cf_ident)
             bridge.cf.CFRelease(cf_dest)
+            if progress_callback:
+                progress_callback(idx + 1, len(assets), dest)
             if idx + 1 < len(assets):
-                time.sleep(0.9)
+                time.sleep(0.35 if idx else 0.55)
 
         bridge.cf.CFRelease(cf_dataclass)
         time.sleep(2.0)

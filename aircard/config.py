@@ -1,8 +1,11 @@
-"""
-Configuration and constants for AirCard Windows.
-"""
-from pathlib import Path
+"""Configuration and constants for AirCard Windows."""
+
+from __future__ import annotations
+
+import os
 import re
+import winreg
+from pathlib import Path
 
 TARGET_WIDTH = 1536
 TARGET_HEIGHT = 969
@@ -11,6 +14,7 @@ TARGET_SIZE = (TARGET_WIDTH, TARGET_HEIGHT)
 TARGET_ASSETS = [
     "cardBackgroundCombined@3x.png",
     "cardBackgroundCombined@2x.png",
+    "cardBackgroundCombined.pdf",
 ]
 
 LOGO_ASSETS = [
@@ -21,9 +25,17 @@ LOGO_ASSETS = [
 ]
 
 CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
+CACHE_EXTENSIONS = [".cache", ".pkcache"]
+
+APP_NAME = "AirCard"
+APP_VERSION = "2.0.0"
 
 APP_ROOT_DIR = Path(__file__).resolve().parent.parent
-CARDS_STORE_PATH = APP_ROOT_DIR / "cards.json"
+LOCAL_APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+APP_DATA_DIR = LOCAL_APP_DATA / APP_NAME
+BACKUP_ROOT = APP_DATA_DIR / "backups"
+CARDS_STORE_PATH = APP_DATA_DIR / "cards.json"
+PORTABLE_CARDS_STORE_PATH = APP_ROOT_DIR / "cards.json"
 LEGACY_STORE_PATH = Path.home() / ".aircard_cards_win.json"
 
 CARD_REGEXES = [
@@ -39,7 +51,32 @@ APPLE_MOBILE_DEVICE_DIRS = [
 
 
 def find_apple_dll_dir() -> Path | None:
-    for d in APPLE_MOBILE_DEVICE_DIRS:
+    candidates: list[Path] = []
+    for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Apple Inc.\Apple Mobile Device Support",
+                0,
+                winreg.KEY_READ | view,
+            ) as key:
+                install_dir, _ = winreg.QueryValueEx(key, "InstallDir")
+                candidates.append(Path(install_dir))
+        except OSError:
+            pass
+
+    candidates.extend(APPLE_MOBILE_DEVICE_DIRS)
+    seen: set[str] = set()
+    for d in candidates:
+        key = os.path.normcase(os.fspath(d))
+        if key in seen:
+            continue
+        seen.add(key)
         if (d / "AirTrafficHost.dll").is_file() and (d / "MobileDevice.dll").is_file():
             return d
     return None
+
+
+def ensure_app_data_dirs() -> None:
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_ROOT.mkdir(parents=True, exist_ok=True)

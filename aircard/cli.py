@@ -11,10 +11,11 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 
 from .config import find_apple_dll_dir
+from .backup import latest_backup
 from .device import get_first_device
 from .scanner import load_saved_cards, save_cards, start_card_scan_session
 from .image_util import prepare_card_skin
-from .core_flasher import flash_card_skin
+from .core_flasher import flash_card_skin, restore_original_card_async
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -201,7 +202,17 @@ def menu_flash_skin():
             def update_progress(step: int, total: int, msg: str):
                 progress.update(task, completed=step, total=total, description=msg)
 
-            success = flash_card_skin(None, target_card, skin_bytes, clean_logo=clean_logo, progress_callback=update_progress)
+            try:
+                success = flash_card_skin(
+                    None,
+                    target_card,
+                    skin_bytes,
+                    clean_logo=clean_logo,
+                    progress_callback=update_progress,
+                )
+            except Exception as exc:
+                success = False
+                console.print(f"[bold red]Update failed:[/bold red] {exc}")
 
         if success:
             console.print(f"[bold green]🎉 SUCCESS: Card {target_card[:10]}... updated![/bold green]")
@@ -215,6 +226,62 @@ def menu_flash_skin():
     input("\nPress ENTER to return to menu...")
 
 
+def menu_restore_original():
+    device = get_first_device()
+    if not device:
+        console.print("\n[red]No trusted USB iPhone is connected.[/red]")
+        input("\nPress ENTER to return to menu...")
+        return
+
+    cards = load_saved_cards()
+    available = [(card, latest_backup(device.udid, card)) for card in cards]
+    available = [(card, record) for card, record in available if record]
+    if not available:
+        console.print("\n[yellow]No original-artwork backup exists for this iPhone.[/yellow]")
+        input("\nPress ENTER to return to menu...")
+        return
+
+    console.print("\n[bold cyan]Choose a card backup to restore:[/bold cyan]")
+    for index, (card, record) in enumerate(available, 1):
+        console.print(f"  [{index}] {card}  [dim]({record.label})[/dim]")
+    value = input(f"\nEnter card number (1-{len(available)}) [1]: ").strip() or "1"
+    try:
+        card_hash, record = available[int(value) - 1]
+    except (ValueError, IndexError):
+        console.print("[red]Invalid choice.[/red]")
+        return
+
+    confirm = input("Restore and verify the saved original artwork? (y/N): ").strip().lower()
+    if confirm not in ("y", "yes"):
+        return
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Restoring original artwork...", total=1)
+
+        def update_progress(step: int, total: int, message: str):
+            progress.update(task, completed=step, total=max(1, total), description=message)
+
+        try:
+            asyncio.run(
+                restore_original_card_async(
+                    device.udid,
+                    card_hash,
+                    backup=record,
+                    verify=True,
+                    progress_callback=update_progress,
+                )
+            )
+            console.print("[bold green]Original artwork restored and verified.[/bold green]")
+        except Exception as exc:
+            console.print(f"[bold red]Restore failed:[/bold red] {exc}")
+    input("\nPress ENTER to return to menu...")
+
+
 def main():
     while True:
         show_banner()
@@ -222,7 +289,8 @@ def main():
         console.print("  [bold cyan]1[/bold cyan] - 📡 Scan Cards (Open Wallet on iPhone & Tap Card)")
         console.print("  [bold cyan]2[/bold cyan] - 📋 View / Manage Saved Cards")
         console.print("  [bold cyan]3[/bold cyan] - 🎨 Flash Custom Skin to Card")
-        console.print("  [bold cyan]4[/bold cyan] - 🔄 Refresh Connection")
+        console.print("  [bold cyan]4[/bold cyan] - ♻️ Restore Original Artwork")
+        console.print("  [bold cyan]5[/bold cyan] - 🔄 Refresh Connection")
         console.print("  [bold cyan]0[/bold cyan] - ❌ Exit")
 
         choice = input("\nSelect option [1]: ").strip()
@@ -233,6 +301,8 @@ def main():
         elif choice == "3":
             menu_flash_skin()
         elif choice == "4":
+            menu_restore_original()
+        elif choice == "5":
             continue
         elif choice == "0":
             console.print("[dim]Goodbye![/dim]")
