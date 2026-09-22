@@ -28,7 +28,7 @@ CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
 CACHE_EXTENSIONS = [".cache", ".pkcache"]
 
 APP_NAME = "AirCard"
-APP_VERSION = "2.0.0-beta.3"
+APP_VERSION = "2.0.0-beta.4"
 
 APP_ROOT_DIR = Path(__file__).resolve().parent.parent
 LOCAL_APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -74,6 +74,36 @@ def find_apple_dll_dir() -> Path | None:
         seen.add(key)
         if (d / "AirTrafficHost.dll").is_file() and (d / "MobileDevice.dll").is_file():
             return d
+    return None
+
+
+def find_desktop_itunes_dir() -> Path | None:
+    """Locate the classic desktop iTunes runtime required for Grappa sync."""
+    candidates: list[Path] = []
+    for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Apple Computer, Inc.\iTunes",
+                0,
+                winreg.KEY_READ | view,
+            ) as key:
+                install_dir, _ = winreg.QueryValueEx(key, "InstallDir")
+                candidates.append(Path(install_dir))
+        except OSError:
+            pass
+
+    candidates.extend(
+        [Path(r"C:\Program Files\iTunes"), Path(r"C:\Program Files (x86)\iTunes")]
+    )
+    seen: set[str] = set()
+    for directory in candidates:
+        key = os.path.normcase(os.fspath(directory))
+        if key in seen:
+            continue
+        seen.add(key)
+        if (directory / "iTunes.exe").is_file() and (directory / "iTunes.dll").is_file():
+            return directory
     return None
 
 

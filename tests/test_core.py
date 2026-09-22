@@ -66,7 +66,12 @@ class FlashOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             patch.object(core_flasher, "invalidate_card_cache_async", AsyncMock(return_value=9)) as cache,
         ):
             result = await core_flasher.flash_card_skin_async(
-                "device", "card", b"png", device_name="Phone", ios_version="18"
+                "device",
+                "card",
+                b"png",
+                auto_backup=True,
+                device_name="Phone",
+                ios_version="18",
             )
 
         self.assertTrue(result)
@@ -79,7 +84,9 @@ class FlashOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         lockdown = Mock(identifier="device")
         with (
             patch.object(core_flasher, "get_lockdown_client", AsyncMock(return_value=lockdown)),
-            patch.object(core_flasher, "backup_original_card_async", AsyncMock()),
+            patch.object(
+                core_flasher, "backup_original_card_async", AsyncMock()
+            ) as backup,
             patch.object(core_flasher, "build_card_assets", return_value={"a": b"1"}),
             patch.object(core_flasher, "get_transparent_pixel_png", return_value=b"transparent"),
             patch.object(core_flasher, "write_system_files_async", AsyncMock()) as write,
@@ -89,6 +96,7 @@ class FlashOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 "device", "card", b"png", clean_logo=True
             )
         written = dict(write.await_args.args[2])
+        backup.assert_not_awaited()
         for name in core_flasher.LOGO_ASSETS:
             self.assertEqual(written[name], b"transparent")
 

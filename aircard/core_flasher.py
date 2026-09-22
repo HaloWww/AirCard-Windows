@@ -551,7 +551,7 @@ async def flash_card_skin_async(
     clean_logo: bool = False,
     progress_callback: Optional[ProgressCallback] = None,
     *,
-    auto_backup: bool = True,
+    auto_backup: bool = False,
     device_name: str = "",
     ios_version: str = "",
 ) -> bool:

@@ -1,7 +1,7 @@
 # AirCard for Windows
 
 一个面向 Windows 的 Apple Wallet 卡面管理工具。它可以替换 Wallet / Apple Pay
-卡面，并在第一次修改前自动备份原始卡面，之后可一键恢复并校验。
+卡面。当前 GUI 按用户要求直接写入，不再强制自动备份。
 
 本项目基于 [Mak5er/AirCard](https://github.com/Mak5er/AirCard) 的 AirLift 思路和
 [alrrstd/AirCard-Windows](https://github.com/alrrstd/AirCard-Windows) 的 Windows
@@ -9,7 +9,8 @@
 
 > [!WARNING]
 > AirCard 使用未公开的 Apple 设备同步行为，iOS 更新可能随时使其失效。修改前请
-> 备份 iPhone。程序不会在原始卡面备份失败时继续写入，但这仍属于高风险操作。
+> 备份 iPhone。自动原始卡面备份已关闭；没有已有 AirCard 备份时，修改后无法使用
+> “恢复原始卡面”功能。这属于高风险操作。
 
 ## 主要功能
 
@@ -17,7 +18,7 @@
 - 支持 PNG、JPG 和 WebP，自动裁切为 1536 × 969
 - 同时生成 Wallet 所需的 `@3x`、`@2x` 和 PDF 卡面资源
 - 可选“全图模式”，隐藏发卡行和联名 Logo
-- 第一次修改前自动读取并保存原始卡面；备份失败则停止修改
+- 直接写入新卡面，不再执行修改前自动备份
 - 一键恢复原始卡面，并逐文件重新读取、校验内容
 - 同时刷新 `.cache` 与 `.pkcache`，兼顾 Wallet 和双击侧边键界面
 - 自动发现 Apple Mobile Device Support 和已信任的 USB iPhone
@@ -27,7 +28,7 @@
 ## 系统要求
 
 - Windows 10 或 Windows 11，64 位
-- Apple 官方 64 位桌面版 iTunes，且已安装 Apple Mobile Device Support
+- Apple 官网提供的完整 64 位桌面版 iTunes（不能只有 Apple Mobile Device Support）
 - 使用源码启动时需要 64 位 Python 3.12
 - USB 数据线；iPhone 必须解锁并信任此电脑
 - 上游 AirCard 声明支持 iOS 18 及以上；其他版本只能视为未经验证，可能无法进入同步会话
@@ -57,7 +58,7 @@ run_aircard.bat --cli
 2. 在“Connect iPhone”中确认设备已连接。
 3. 点击“Scan Wallet”，按提示在 iPhone 上打开并点选目标卡；也可以手动添加卡片哈希。
 4. 选择卡面图片，确认预览，需要时开启“Full-art mode”。
-5. 点击“Apply card skin”。第一次修改会先备份原始卡面；备份失败时不会写入。
+5. 点击“应用新卡面”。程序会直接写入，不再自动备份原始卡面。
 6. 强制关闭 iPhone 上的 Wallet，再重新打开查看效果。
 
 ## 恢复原始卡面

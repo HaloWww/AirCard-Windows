@@ -17,7 +17,7 @@ if sys.stderr is None:
 import flet as ft
 
 from aircard.backup import latest_backup
-from aircard.config import APP_VERSION, find_apple_dll_dir
+from aircard.config import APP_VERSION, find_apple_dll_dir, find_desktop_itunes_dir
 from aircard.core_flasher import flash_card_skin_async, restore_original_card_async
 from aircard.device import ConnectedDevice, get_connected_devices
 from aircard.image_util import prepare_card_skin
@@ -206,7 +206,9 @@ async def main(page: ft.Page):
         icon=ft.Icons.REFRESH_ROUNDED,
         tooltip="刷新设备列表",
     )
-    apple_support = find_apple_dll_dir()
+    apple_dlls = find_apple_dll_dir()
+    desktop_itunes = find_desktop_itunes_dir()
+    apple_support = bool(apple_dlls and desktop_itunes)
     support_row = ft.Row(
         [
             ft.Icon(
@@ -215,9 +217,13 @@ async def main(page: ft.Page):
                 color=SUCCESS if apple_support else "#FFB454",
             ),
             ft.Text(
-                "Apple 移动设备支持已就绪"
+                "完整桌面版 iTunes 已就绪"
                 if apple_support
-                else "应用卡面前请安装 64 位桌面版 iTunes",
+                else (
+                    "仅检测到移动设备支持；缺少桌面版 iTunes"
+                    if apple_dlls
+                    else "应用卡面前请安装 Apple 官网 64 位桌面版 iTunes"
+                ),
                 size=11,
                 color=SUCCESS if apple_support else "#FFB454",
             ),
@@ -291,8 +297,10 @@ async def main(page: ft.Page):
         else:
             backup_icon.name = ft.Icons.SHIELD_OUTLINED
             backup_icon.color = MUTED
-            backup_text.value = "首次修改前会自动备份原始卡面"
-            backup_text.color = MUTED
+            backup_icon.name = ft.Icons.WARNING_AMBER_ROUNDED
+            backup_icon.color = "#FFB454"
+            backup_text.value = "自动备份已关闭；没有备份将无法恢复"
+            backup_text.color = "#FFB454"
 
         ready = bool(selected_device and selected_hash and artwork and apple_support and not busy)
         flash_button.disabled = not ready
@@ -541,7 +549,7 @@ async def main(page: ft.Page):
     async def apply_skin(_=None):
         if not selected_device or not selected_hash or not artwork:
             return
-        set_busy(True, "正在准备安全备份…")
+        set_busy(True, "正在写入新卡面…")
         loop = asyncio.get_running_loop()
         try:
             await flash_card_skin_async(
@@ -550,7 +558,7 @@ async def main(page: ft.Page):
                 artwork,
                 clean_logo=bool(clean_logo.value),
                 progress_callback=thread_safe_progress(loop),
-                auto_backup=True,
+                auto_backup=False,
                 device_name=selected_device.name,
                 ios_version=selected_device.ios_version,
             )
@@ -635,7 +643,7 @@ async def main(page: ft.Page):
                             [
                                 ft.Text("优先保障可恢复", size=12, color=TEXT, weight=ft.FontWeight.W_600),
                                 ft.Text(
-                                    "首次修改前会先在本机保存原始卡面资源。",
+                                    "当前不会自动备份；没有原始备份时无法一键恢复。",
                                     size=10,
                                     color=MUTED,
                                 ),

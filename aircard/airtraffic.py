@@ -196,6 +196,10 @@ def _sync_assets_impl(
             if name == "ReadyForSync":
                 ready_for_sync = True
                 break
+            if name == "SyncFailed":
+                raise AirTrafficError(
+                    "设备拒绝同步（SyncFailed）。请安装 Apple 官网提供的完整桌面版 iTunes。"
+                )
 
         if not ready_for_sync:
             raise AirTrafficError("设备未准备好同步（未收到 ReadyForSync）")
