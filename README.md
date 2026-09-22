@@ -30,6 +30,7 @@
 - Apple 官方 64 位桌面版 iTunes，且已安装 Apple Mobile Device Support
 - 使用源码启动时需要 64 位 Python 3.12
 - USB 数据线；iPhone 必须解锁并信任此电脑
+- 上游 AirCard 声明支持 iOS 18 及以上；其他版本只能视为未经验证，可能无法进入同步会话
 
 Microsoft Store 版 iTunes 有时不会提供程序需要的 DLL。若界面显示 Apple Mobile
 Device Support 未就绪，请改用 Apple 官网提供的桌面安装包。
@@ -92,8 +93,10 @@ Mobile Device Support。GitHub Actions 也提供手动触发的 `Windows build` 
 - 单元测试覆盖：备份完整性、防篡改、卡面/PDF 生成、批量写入编排、双缓存刷新、
   全图 Logo 与恢复路径的关键逻辑。
 - Windows GUI 已完成实际启动检查；设备发现已在真实 USB iPhone 上通过。
-- 当前开发环境没有对用户的 Wallet 卡片执行写入，因此本版本的完整写入/恢复流程仍需
-  在自有测试设备上谨慎验证。
+- 真机测试已确认 Windows 可发现 USB iPhone，并能进入 AirTraffic 的 `SyncAllowed`
+  阶段；在 iOS 16.1 上无法继续到 `ReadyForSync`，因此安全停止且未写入卡片。
+- Apple DLL 调用在独立进程运行。设备停止响应时会在 45/90 秒内中止并显示最后阶段，
+  不再让 GUI 无限卡在“备份原始资源”。
 - AirLift 是否可用取决于具体 iOS 版本和 build；“能连接”不等于“该版本一定可写”。
 
 运行测试：

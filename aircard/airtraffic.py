@@ -7,6 +7,8 @@ import time
 import uuid
 import plistlib
 import ctypes
+import multiprocessing
+import queue
 from .config import find_apple_dll_dir
 
 kCFStringEncodingUTF8 = 0x08000100
@@ -121,15 +123,11 @@ class CFBridge:
         return plistlib.loads(raw_bytes)
 
 
-def sync_assets_via_airtraffic(
+def _sync_assets_impl(
     udid: str,
-    assets: Iterable[tuple[str, str]],
-    timeout_sec: int = 45,
+    assets: list[tuple[str, str]],
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> bool:
-    assets = list(assets)
-    if not assets:
-        return True
     dll_dir = find_apple_dll_dir()
     if not dll_dir:
             raise AirTrafficError(
@@ -145,6 +143,8 @@ def sync_assets_via_airtraffic(
         raise AirTrafficError(f"AirTraffic 无法连接设备 {udid}")
 
     try:
+        if progress_callback:
+            progress_callback(0, len(assets), "正在等待设备允许同步…")
         sync_allowed = False
         for _ in range(8):
             msg = bridge.ath.ATHostConnectionReadMessage(conn)
@@ -161,6 +161,8 @@ def sync_assets_via_airtraffic(
         if not sync_allowed:
             raise AirTrafficError("设备未允许同步（未收到 SyncAllowed）")
 
+        if progress_callback:
+            progress_callback(0, len(assets), "设备已允许同步，正在建立会话…")
         host_info_py = {
             "Type": "iTunes",
             "Version": "13.7.0.161",
@@ -198,6 +200,8 @@ def sync_assets_via_airtraffic(
         if not ready_for_sync:
             raise AirTrafficError("设备未准备好同步（未收到 ReadyForSync）")
 
+        if progress_callback:
+            progress_callback(0, len(assets), "正在读取设备资源清单…")
         cf_sync_types = bridge.cf_plist({"Book": 1})
         cf_empty_anchors = bridge.cf_plist({})
         bridge.ath.ATHostConnectionSendMetadataSyncFinished(conn, cf_sync_types, cf_empty_anchors)
@@ -256,3 +260,105 @@ def sync_assets_via_airtraffic(
 
     finally:
         bridge.ath.ATHostConnectionRelease(conn)
+
+
+def _airtraffic_worker(
+    udid: str,
+    assets: list[tuple[str, str]],
+    events: Any,
+) -> None:
+    """Run the blocking Apple DLL calls outside the GUI process."""
+
+    def report(step: int, total: int, message: str) -> None:
+        events.put(("progress", step, total, message))
+
+    try:
+        result = _sync_assets_impl(udid, assets, report)
+        events.put(("result", bool(result)))
+    except MissingRemoteAssetError as exc:
+        events.put(("missing", exc.identifiers))
+    except BaseException as exc:
+        events.put(("error", type(exc).__name__, str(exc)))
+
+
+def sync_assets_via_airtraffic(
+    udid: str,
+    assets: Iterable[tuple[str, str]],
+    timeout_sec: int = 45,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> bool:
+    """Synchronize assets with a hard timeout around Apple's blocking DLL.
+
+    ``ATHostConnectionReadMessage`` has no cancellation or timeout API.  A
+    spawned worker process is therefore required: if the device stops replying,
+    the worker can be terminated without freezing the Flet event loop forever.
+    """
+    asset_list = list(assets)
+    if not asset_list:
+        return True
+
+    timeout_sec = max(5, int(timeout_sec))
+    context = multiprocessing.get_context("spawn")
+    events = context.Queue()
+    process = context.Process(
+        target=_airtraffic_worker,
+        args=(udid, asset_list, events),
+        name="AirCard-AirTraffic",
+        daemon=True,
+    )
+    last_stage = "正在启动设备同步"
+    process.start()
+    deadline = time.monotonic() + timeout_sec
+
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AirTrafficError(
+                    f"设备同步超时（{timeout_sec} 秒），最后阶段：{last_stage}。"
+                    "请解锁 iPhone、保持 USB 连接后重试。"
+                )
+
+            try:
+                event = events.get(timeout=min(0.25, remaining))
+            except queue.Empty:
+                if process.is_alive():
+                    continue
+                try:
+                    event = events.get(timeout=1.0)
+                except queue.Empty as exc:
+                    raise AirTrafficError(
+                        f"设备同步进程意外退出（代码 {process.exitcode}）"
+                    ) from exc
+
+            kind = event[0]
+            if kind == "progress":
+                _, step, total, message = event
+                last_stage = str(message)
+                if progress_callback:
+                    try:
+                        progress_callback(int(step), int(total), last_stage)
+                    except Exception:
+                        pass
+                continue
+            if kind == "result":
+                process.join(timeout=2)
+                return bool(event[1])
+            if kind == "missing":
+                raise MissingRemoteAssetError(list(event[1]))
+            if kind == "error":
+                _, error_type, message = event
+                raise AirTrafficError(f"{error_type}：{message}")
+            raise AirTrafficError(f"设备同步返回未知结果：{event!r}")
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=3)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=2)
+        # A forcibly stopped worker may leave the Queue feeder half-written.
+        # Never let Queue cleanup reintroduce the same kind of indefinite wait
+        # that this process boundary is designed to prevent.
+        events.cancel_join_thread()
+        events.close()

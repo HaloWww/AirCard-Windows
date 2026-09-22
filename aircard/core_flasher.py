@@ -21,7 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-from .airtraffic import MissingRemoteAssetError, sync_assets_via_airtraffic
+from .airtraffic import (
+    AirTrafficError,
+    MissingRemoteAssetError,
+    sync_assets_via_airtraffic,
+)
 from .backup import (
     BackupError,
     BackupRecord,
@@ -47,6 +51,8 @@ SOURCE_PREFIX = "airlift-src-"
 LINK_PREFIX = "airlift-link-"
 RECOVERED_PREFIX = "airlift-recovered-"
 SZ_EXTRA_ID = 0x5A53
+READ_SYNC_TIMEOUT = 45
+WRITE_SYNC_TIMEOUT = 90
 
 TRACKED_BOOKS_FILES = (
     "Books/Books.plist",
@@ -277,7 +283,7 @@ async def _write_files_in_session(
             sync_assets_via_airtraffic,
             udid,
             list(zip(identifiers, destinations)),
-            120,
+            WRITE_SYNC_TIMEOUT,
             progress_callback,
         )
     finally:
@@ -355,6 +361,7 @@ async def read_system_file_async(
     udid: str,
     target_dir: str,
     leaf_name: str,
+    progress_callback: ProgressCallback | None = None,
 ) -> bytes | None:
     """Read a known file by temporarily relocating it into AFC-visible Media.
 
@@ -375,6 +382,7 @@ async def read_system_file_async(
         identifier = posixpath.relpath(target_path, AIRLOCK_ROOT)
         payload: bytes | None = None
         restored = False
+        sync_error: Exception | None = None
         try:
             await _ensure_parent(afc, "Books/Sync/Books.plist")
             await afc.set_file_contents(
@@ -385,12 +393,20 @@ async def read_system_file_async(
                     sync_assets_via_airtraffic,
                     udid,
                     [(identifier, recovered)],
-                    120,
+                    READ_SYNC_TIMEOUT,
+                    progress_callback,
                 )
             except MissingRemoteAssetError:
                 return None
+            except Exception as exc:
+                # The Apple DLL may block after the device has already moved
+                # the requested resource into Media.  Recover that file before
+                # surfacing the timeout/error to the caller.
+                sync_error = exc
 
             if not await afc.exists(recovered):
+                if sync_error:
+                    raise sync_error
                 return None
             payload = await afc.get_file_contents(recovered)
             for attempt in range(1, 4):
@@ -410,6 +426,10 @@ async def read_system_file_async(
                     f"紧急恢复副本已保存到 {recovery_path}。"
                 )
             await afc.rm(recovered)
+            if sync_error:
+                raise AirTrafficError(
+                    "设备同步未正常结束，但已将临时移出的原始文件安全写回设备。"
+                ) from sync_error
             return payload
         finally:
             await restore_books(afc, books)
@@ -436,7 +456,10 @@ async def remove_system_file_async(udid: str, target_dir: str, leaf_name: str) -
             )
             try:
                 await asyncio.to_thread(
-                    sync_assets_via_airtraffic, udid, [(identifier, recovered)], 120
+                    sync_assets_via_airtraffic,
+                    udid,
+                    [(identifier, recovered)],
+                    READ_SYNC_TIMEOUT,
                 )
             except MissingRemoteAssetError:
                 return True
@@ -465,7 +488,18 @@ async def backup_original_card_async(
     for index, name in enumerate(BACKUP_ASSETS, 1):
         if progress_callback:
             progress_callback(index - 1, total, f"正在备份原始资源：{name}…")
-        assets[name] = await read_system_file_async(udid, target, name)
+        assets[name] = await read_system_file_async(
+            udid,
+            target,
+            name,
+            (
+                lambda _step, _sync_total, message, current=index - 1: progress_callback(
+                    current, total, message
+                )
+            )
+            if progress_callback
+            else None,
+        )
 
     missing_required = [name for name in REQUIRED_BACKUP_ASSETS if assets.get(name) is None]
     if missing_required:

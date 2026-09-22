@@ -17,4 +17,7 @@ if str(root_dir) not in sys.path:
 from aircard.cli import main
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()

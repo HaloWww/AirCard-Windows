@@ -558,7 +558,18 @@ async def main(page: ft.Page):
             show_message("卡面已更新。请强制关闭 Wallet 后重新打开。")
         except Exception as exc:
             operation_status.value = "卡面更新失败"
-            show_message(str(exc), error=True)
+            message = str(exc)
+            try:
+                ios_major = int(selected_device.ios_version.split(".", 1)[0])
+            except (AttributeError, TypeError, ValueError):
+                ios_major = 0
+            if ios_major and ios_major < 18:
+                message = (
+                    f"当前设备为 iOS {selected_device.ios_version}；"
+                    "上游 AirCard 声明支持 iOS 18 及以上，此版本可能不兼容。\n"
+                    + message
+                )
+            show_message(message, error=True)
         finally:
             set_busy(False)
 
@@ -701,4 +712,7 @@ async def main(page: ft.Page):
 
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     ft.run(main)
