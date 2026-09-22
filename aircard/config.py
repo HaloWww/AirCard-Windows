@@ -28,7 +28,7 @@ CACHE_FILES = ["FrontFace", "PlaceHolder", "Preview"]
 CACHE_EXTENSIONS = [".cache", ".pkcache"]
 
 APP_NAME = "AirCard"
-APP_VERSION = "2.0.0-beta.4"
+APP_VERSION = "2.0.0-beta.5"
 
 APP_ROOT_DIR = Path(__file__).resolve().parent.parent
 LOCAL_APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -102,7 +102,11 @@ def find_desktop_itunes_dir() -> Path | None:
         if key in seen:
             continue
         seen.add(key)
-        if (directory / "iTunes.exe").is_file() and (directory / "iTunes.dll").is_file():
+        # Current standalone x64 iTunes releases (including 12.13.11.1) no
+        # longer ship iTunes.dll.  AirCard talks to the separate Apple Mobile
+        # Device Support runtime, so iTunes.exe is the correct desktop-edition
+        # marker; find_apple_dll_dir() validates the required DLLs separately.
+        if (directory / "iTunes.exe").is_file():
             return directory
     return None
 
